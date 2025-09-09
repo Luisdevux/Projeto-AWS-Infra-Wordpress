@@ -1,0 +1,183 @@
+# Projeto AWS EC2 - WordPress com Docker e EFS
+
+![AWS](https://img.shields.io/badge/AWS-EC2-orange)
+![AWS](https://img.shields.io/badge/AWS-RDS-blue)
+![AWS](https://img.shields.io/badge/AWS-EFS-green)
+![Shell Script](https://img.shields.io/badge/Shell-Script-orange)
+![Docker](https://img.shields.io/badge/Docker-Container-blue)
+![WordPress](https://img.shields.io/badge/WordPress-CMS-green)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
+Este projeto demonstra a automação do deploy de um **WordPress** em uma instância EC2 da AWS utilizando Docker e EFS, garantindo persistência de arquivos de mídia e integração com banco de dados RDS. Todo o processo é automatizado via **user-data**, incluindo instalação de Docker, configuração do WordPress e montagem do EFS.
+
+O objetivo é entregar uma solução **pronta para produção**, com escalabilidade futura, backup de arquivos e facilidade de manutenção.
+
+---
+
+## 🛠 Tecnologias Utilizadas
+
+- **Amazon EC2** — Instância virtual Ubuntu Server;
+- **Amazon EFS** — Sistema de arquivos compartilhado para persistência de mídias;
+- **Amazon RDS (MySQL)** — Banco de dados para WordPress;
+- **Docker & Docker Compose** — Containers para WordPress;
+- **Shell Script** — Automação via user-data;
+- **jq** — Processamento de JSON para buscar credenciais no AWS Secrets Manager;
+- **NFS Utils** — Montagem do EFS na instância;
+- **AWS CLI** — Para integração com Secrets Manager e outras ferramentas.
+
+---
+
+## ✅ Pré-requisitos
+
+Antes de executar este projeto:
+
+- Ter uma **conta AWS** com permissões para criar EC2, EFS, RDS e IAM;
+- Um secret no Secrets Manager contendo as credenciais do RDS e DNS do EFS;
+- Rede com VPC, Subnets e Security Groups configurados. Caso não possua, a sessão mais abaixo terá informações.
+
+---
+
+## 🧱 Arquitetura da Solução
+
+A solução foi construída para ser executada automaticamente no primeiro boot da instância EC2. O fluxo principal é:
+
+1. Instância EC2 é criada com imagem `Ubuntu` e `user-data` configurado.
+2. Durante o boot, o script `user-data`:
+   - Atualiza o sistema e instala dependências (Docker, Docker Compose, NFS, AWS CLI, jq).
+   - Monta o EFS dinamicamente usando o DNS obtido via Secrets Manager.
+   - Ajusta permissões de www-data para uploads de mídias.
+   - Recupera as credenciais do RDS e configura variáveis de ambiente.
+   - Configura o Docker Compose para rodar WordPress com volume para o EFS.
+3. Docker cria e inicia o container do WordPress, conectado ao banco e com armazenamento persistente, onde:
+   - Porta `80` exposta.
+   - Volume `/mnt/efs/wordpress:/var/www/html`.
+   - Banco de dados conectado via variáveis de ambiente do `Secrets Manager`.
+4. O WordPress pode receber uploads e persistir arquivos no EFS.
+5. Permissões e grupo do usuário Ubuntu são ajustados para interagir com os arquivos do container.
+
+---
+
+## 🌐 VPC e Subnets
+
+A infraestrutura foi provisionada em uma VPC customizada na região `us-east-1`.
+
+Foram criadas subnets públicas e privadas distribuídas em duas zonas de disponibilidade (AZs) para garantir alta disponibilidade e redundância.
+
+### 📦 Estrutura da VPC
+
+- **VPC CIDR:** `10.0.0.0/16`
+- **Subnets públicas:** permitem acesso direto à internet via Internet Gateway (IGW). Hospedam o Application Load Balancer (ALB) e o NAT Gateway.
+- **Subnets privadas:** não têm acesso direto da internet. Hospedam os recursos EC2 (WordPress), RDS (MySQL) e EFS.
+- **NAT Gateway:** fica em subnet pública e fornece saída para a internet aos recursos em subnets privadas.
+### 🗺️ Tabela de Subnets
+
+| Nome da Subnet | Zona de Disponibilidade | Faixa de IP (CIDR) | Tipo | Recursos associados |
+| :--- | :--- | :--- | :--- | :--- |
+| Public Subnet 1 | us-east-1a | `10.0.1.0/24` | Pública | ALB, NAT Gateway |
+| Public Subnet 2 | us-east-1b | `10.0.3.0/24` | Pública | ALB, NAT Gateway |
+| Private Subnet 1 | us-east-1a | `10.0.2.0/24` | Privada | EC2, RDS, EFS |
+| Private Subnet 2 | us-east-1b | `10.0.4.0/24` | Privada | EC2, RDS, EFS |
+
+### 🔗 Comunicação entre Subnets
+
+- ALB recebe tráfego HTTP/HTTPS da internet nas subnets públicas.
+- EC2 roda em subnets privadas e recebe tráfego somente do ALB.
+- RDS e EFS ficam em subnets privadas, acessíveis apenas pelas EC2.
+- NAT Gateway (em subnets públicas) garante que instâncias privadas acessem a internet sem ficarem expostas.
+
+---
+
+## 🔐 Grupo de Segurança (Security Group)
+
+| Nome / Recurso       | Tipo    | Protocolo | Porta | Origem / Destino   | Descrição                                      |
+| -------------------- | ------- | --------- | ----- | ------------------ | ---------------------------------------------- |
+| **SG-ALB (Load Balancer)** | Entrada | TCP | 80    | 0.0.0.0/0          | Permite acesso HTTP público
+|                      | Saída   | All       | All   | 0.0.0.0/0          | Permite encaminhar tráfego para targets
+| **SG-WordPress (EC2/WordPress)** | Entrada | TCP       | 80    | SG-ALB          | Permite acesso HTTP apenas do ALB      |
+|                      | Saída   | All       | All   | 0.0.0.0/0          | Permite comunicação externa                    |
+| **SG-RDS (Database RDS)** | Entrada | TCP       | 3306  | SG-WordPress   | Permite apenas que a instância EC2 acesse o DB |
+|                      | Saída   | All       | All   | 0.0.0.0/0          | Comunicação padrão de saída                    |
+| **SG-EFS (File System EFS)** | Entrada | TCP       | 2049  | SG-WordPress   | Permite apenas que a instância EC2 monte o EFS |
+|                      | Saída   | All       | All   | 0.0.0.0/0          | Comunicação padrão de saída                    |
+
+
+> ⚠️ Recomendado restringir e manter toda a infraestrututra privada para maior segurança, tendo acesso a aplicação somente a partir do Load Balancer.
+
+---
+
+## ⚙️ Configuração do Template das Instâncias EC2
+
+- **AMI:** Ubuntu Server 24.04 LTS.
+- **Tipo de instância:** t3.micro (Free Tier compatível).
+- **Armazenamento:** 8 GB SSD.
+- **Subnet:** Privada.
+- **Elastic IP:** Associado manualmente para IP fixo.
+- **IAM:** Política de acesso para as credenciais aramazenadas no Secrets Manager.
+- **User Data:** Script de inicialização que instala Docker, configura EFS, busca credenciais e sobe WordPress.
+
+---
+
+## 📝 Script de Inicialização (User Data)
+
+O script `user-data` automatiza:
+
+- Instalação de pacotes essenciais (Docker, Docker Compose, AWS CLI, jq, NFS);
+- Montagem do EFS em `/mnt/efs/wordpress`;
+- Ajuste de permissões para `www-data` e `ubuntu`;
+- Busca de credenciais no Secrets Manager;
+- Espera o banco de dados ficar disponível;
+- Criação e execução do Docker Compose para WordPress.
+
+### Trecho do Script:
+
+```bash
+#!/bin/bash
+
+# Atualiza sistema e instala pacotes
+apt update -y && apt install -y curl unzip jq nfs-common docker.io docker-compose
+
+# Monta EFS
+mkdir -p /mnt/efs/wordpress
+mount -t nfs4 -o nfsvers=4.1 $EFS_DNS:/ /mnt/efs/wordpress
+echo "$EFS_DNS:/ /mnt/efs/wordpress nfs4 defaults,_netdev 0 0" >> /etc/fstab
+chown -R ubuntu:www-data /mnt/efs/wordpress
+chmod 775 /mnt/efs/wordpress
+
+# Busca credenciais do RDS
+SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id wordpress/RDS/credentials --query SecretString --output text --region us-east-1)
+DB_USER=$(echo $SECRET_JSON | jq -r '.username')
+DB_PASS=$(echo $SECRET_JSON | jq -r '.password')
+DB_HOST=$(echo $SECRET_JSON | jq -r '.host')
+DB_NAME=$(echo $SECRET_JSON | jq -r '.dbname')
+EFS_DNS=$(echo $SECRET_JSON | jq -r '.efs_dns')
+
+# Exporta variáveis de ambiente para Docker Compose
+export WORDPRESS_DB_USER=$DB_USER
+export WORDPRESS_DB_PASSWORD=$DB_PASS
+export WORDPRESS_DB_HOST=$DB_HOST
+export WORDPRESS_DB_NAME=$DB_NAME
+
+# Docker Compose para WordPress
+mkdir -p /home/ubuntu/wordpress-docker
+cat <<EOL > /home/ubuntu/wordpress-docker/docker-compose.yml
+services:
+  wordpress:
+    image: wordpress:latest
+    container_name: wordpress
+    ports:
+      - "80:80"
+    volumes:
+      - /mnt/efs/wordpress:/var/www/html
+    environment:
+      WORDPRESS_DB_HOST: $DB_HOST
+      WORDPRESS_DB_USER: $DB_USER
+      WORDPRESS_DB_PASSWORD: $DB_PASS
+      WORDPRESS_DB_NAME: $DB_NAME
+    restart: always
+EOL
+
+cd /home/ubuntu/wordpress-docker
+sudo -u ubuntu docker compose up -d --build --force-recreate
+```
+
+> ### Este projeto está licenciado sob a [Licença MIT](./LICENSE).
