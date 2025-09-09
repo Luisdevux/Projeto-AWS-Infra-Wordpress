@@ -80,7 +80,7 @@ Foram criadas subnets públicas e privadas distribuídas em duas zonas de dispon
 
 ### 🔗 Comunicação entre Subnets
 
-- ALB recebe tráfego HTTP/HTTPS da internet nas subnets públicas.
+- ALB recebe tráfego HTTP da internet nas subnets públicas.
 - EC2 roda em subnets privadas e recebe tráfego somente do ALB.
 - RDS e EFS ficam em subnets privadas, acessíveis apenas pelas EC2.
 - NAT Gateway (em subnets públicas) garante que instâncias privadas acessem a internet sem ficarem expostas.
@@ -114,6 +114,20 @@ O tráfego externo é direcionado para a aplicação através do **Application L
 -   **Segurança:** Apenas o SG do ALB permite acesso público; EC2 só aceita tráfego do SG do ALB.
 
 Esse modelo mantém a aplicação privada e segura, permitindo acesso externo apenas pelo ALB.
+
+---
+
+## 📈 Escalabilidade e Segurança (Auto Scaling e IAM)
+
+-   O ambiente conta com um **Auto Scaling Group (ASG)** configurado com múltiplas AZs (`us-east-1a` e `us-east-1b`).
+-   As instâncias EC2 que rodam WordPress são criadas automaticamente pelo ASG, conectadas ao ALB e distribuídas entre as subnets privadas.
+-   **Health Checks** do ALB monitoram o status das instâncias e só direcionam tráfego para instâncias saudáveis.
+
+### IAM (Identity and Access Management)
+
+-   Cada instância EC2 possui um **IAM Role** com permissões mínimas necessárias para acessar o Secrets Manager.
+-   As credenciais do RDS e o DNS do EFS são obtidos dinamicamente via IAM, garantindo segurança e evitando o armazenamento de senhas no script.
+
 
 ---
 
@@ -215,6 +229,12 @@ Durante a implementação do projeto, algumas dificuldades técnicas foram ident
 -   **Problema:** O WordPress não conseguia criar pastas em `wp-content/uploads`, para armazenar mídias.
 -   **Causa:** O diretório montado no EFS não tinha permissões para o usuário do container (`www-data`, UID 33).
 -   **Solução:** No `user-data`, foram configuradas permissões adequadas com os comandos `chown -R 33:33` e `chmod -R 775` e adicionamos o usuário `ubuntu` ao grupo 33. Assim, os uploads passaram a funcionar.
+
+### 4. 🏥 Health Check do ALB não identificava instâncias como saudáveis
+
+-   **Problema:** O ALB marcava as instâncias como `unhealthy`, mesmo com o WordPress ativo.
+-   **Causa:** O range de respostas HTTP configurado no health check não incluía todos os códigos válidos retornados pelo WordPress (ex: redirecionamentos 3xx).
+-   **Solução:** Foi ajustado o range de códigos de sucesso para `200-399` no Health Check do Target Group do ALB, garantindo que as instâncias fossem consideradas saudáveis corretamente.
 
 ---
 
