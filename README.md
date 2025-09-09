@@ -1,4 +1,4 @@
-# Projeto AWS EC2 - WordPress com Docker e EFS
+# Projeto AWS EC2 - WordPress com Docker
 
 ![AWS](https://img.shields.io/badge/AWS-EC2-orange)
 ![AWS](https://img.shields.io/badge/AWS-RDS-blue)
