@@ -87,7 +87,7 @@ Foram criadas subnets públicas e privadas distribuídas em duas zonas de dispon
 
 ---
 
-## 🔐 Grupo de Segurança (Security Group)
+## 🔐 Grupos de Segurança (Security Group)
 
 | Nome / Recurso       | Tipo    | Protocolo | Porta | Origem / Destino   | Descrição                                      |
 | -------------------- | ------- | --------- | ----- | ------------------ | ---------------------------------------------- |
@@ -105,6 +105,18 @@ Foram criadas subnets públicas e privadas distribuídas em duas zonas de dispon
 
 ---
 
+## 🌐 Fluxo de Tráfego e Application Load Balancer (ALB)
+
+O tráfego externo é direcionado para a aplicação através do **Application Load Balancer (ALB)**, que fica em subnets públicas. O ALB distribui o tráfego HTTP para as instâncias EC2 privadas onde o WordPress está rodando.
+
+-   **Ingressos:** Usuários acessam via internet → ALB (subnets públicas).
+-   **Destino:** ALB encaminha tráfego apenas para EC2 (subnets privadas).
+-   **Segurança:** Apenas o SG do ALB permite acesso público; EC2 só aceita tráfego do SG do ALB.
+
+Esse modelo mantém a aplicação privada e segura, permitindo acesso externo apenas pelo ALB.
+
+---
+
 ## ⚙️ Configuração do Template das Instâncias EC2
 
 - **AMI:** Ubuntu Server 24.04 LTS.
@@ -112,7 +124,7 @@ Foram criadas subnets públicas e privadas distribuídas em duas zonas de dispon
 - **Armazenamento:** 8 GB SSD.
 - **Subnet:** Privada.
 - **Elastic IP:** Associado manualmente para IP fixo.
-- **IAM:** Política de acesso para as credenciais aramazenadas no Secrets Manager.
+- **IAM:** Política de acesso para as credenciais armazenadas no Secrets Manager.
 - **User Data:** Script de inicialização que instala Docker, configura EFS, busca credenciais e sobe WordPress.
 
 ---
@@ -122,9 +134,9 @@ Foram criadas subnets públicas e privadas distribuídas em duas zonas de dispon
 O script `user-data` automatiza:
 
 - Instalação de pacotes essenciais (Docker, Docker Compose, AWS CLI, jq, NFS);
+- Busca de credenciais no Secrets Manager;
 - Montagem do EFS em `/mnt/efs/wordpress`;
 - Ajuste de permissões para `www-data` e `ubuntu`;
-- Busca de credenciais no Secrets Manager;
 - Espera o banco de dados ficar disponível;
 - Criação e execução do Docker Compose para WordPress.
 
@@ -179,5 +191,31 @@ EOL
 cd /home/ubuntu/wordpress-docker
 sudo -u ubuntu docker compose up -d --build --force-recreate
 ```
+
+---
+
+## ⚠️ Algumas Dificuldades Encontradas e Soluções
+
+Durante a implementação do projeto, algumas dificuldades técnicas foram identificadas. Abaixo estão os principais problemas e como foram solucionados:
+
+### 1. 🚫 Falha ao resolver DNS do EFS
+
+-   **Problema:** A instância EC2 não conseguia resolver o DNS do Amazon EFS.
+-   **Causa:** A opção “Nomes de host DNS” estava desabilitada na VPC, impedindo a resolução de nomes internos.
+-   **Solução:** Foi habilitado a "Resolução de DNS" e "Nomes de host DNS" nas configurações da VPC. Após isso, o EFS pôde ser montado corretamente.
+
+### 2. 🐢 Timeout/erro na conexão com o banco RDS
+
+-   **Problema:** O script `user-data` falhava ao conectar no RDS.
+-   **Causa:** O RDS foi criado sem definir a AZ de preferência e acabou provisionado na `us-east-1b`, enquanto a infraestrutura (EC2 + subnets privadas) estava na `us-east-1a`. Isso impedia a comunicação entre a aplicação e o banco.
+-   **Solução:** Foi recriado o banco RDS, fixando a mesma Availability Zone da infraestrutura (`us-east-1a`).
+
+### 3. 🔒 Permissão de escrita em uploads do WordPress
+
+-   **Problema:** O WordPress não conseguia criar pastas em `wp-content/uploads`, para armazenar mídias.
+-   **Causa:** O diretório montado no EFS não tinha permissões para o usuário do container (`www-data`, UID 33).
+-   **Solução:** No `user-data`, foram configuradas permissões adequadas com os comandos `chown -R 33:33` e `chmod -R 775` e adicionamos o usuário `ubuntu` ao grupo 33. Assim, os uploads passaram a funcionar.
+
+---
 
 > ### Este projeto está licenciado sob a [Licença MIT](./LICENSE).
