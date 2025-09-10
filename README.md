@@ -287,4 +287,12 @@ Durante a implementação do projeto, algumas dificuldades técnicas foram ident
 
 ---
 
+## 🧪 Exemplo de Funcionamento:
+
+### 🖥️ Página Do WordPress Ativa (Deploy Realizado com Sucesso)
+
+![Página no ar](./img/WordPressFuncionando.png)
+
+---
+
 > ### Este projeto está licenciado sob a [Licença MIT](./LICENSE).
