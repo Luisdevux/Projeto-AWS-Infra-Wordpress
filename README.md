@@ -1,4 +1,4 @@
-# Projeto AWS EC2 - WordPress com Docker
+# Projeto AWS EC2 - WordPress com Docker e EFS
 
 ![AWS](https://img.shields.io/badge/AWS-EC2-orange)
 ![AWS](https://img.shields.io/badge/AWS-RDS-blue)
@@ -33,7 +33,7 @@ Antes de executar este projeto:
 
 - Ter uma **conta AWS** com permissões para criar EC2, EFS, RDS e IAM;
 - Um secret no Secrets Manager contendo as credenciais do RDS e DNS do EFS;
-- Rede com VPC, Subnets e Security Groups configurados. Caso não possua, a sessão mais abaixo terá informações.
+- Rede com VPC, Subnets e Security Groups configurados. Caso não possua, a seção mais abaixo terá informações.
 
 ---
 
@@ -101,7 +101,7 @@ Foram criadas subnets públicas e privadas distribuídas em duas zonas de dispon
 |                      | Saída   | All       | All   | 0.0.0.0/0          | Comunicação padrão de saída                    |
 
 
-> ⚠️ Recomendado restringir e manter toda a infraestrututra privada para maior segurança, tendo acesso a aplicação somente a partir do Load Balancer.
+> ⚠️ Recomendado restringir e manter toda a infraestrutura privada para maior segurança, tendo acesso a aplicação somente a partir do Load Balancer.
 
 ---
 
@@ -131,13 +131,12 @@ Esse modelo mantém a aplicação privada e segura, permitindo acesso externo ap
 
 ---
 
-## ⚙️ Configuração do Template das Instâncias EC2
+## ⚙️ Configuração do Launch Template (para o Auto Scaling)
 
 - **AMI:** Ubuntu Server 24.04 LTS.
 - **Tipo de instância:** t3.micro (Free Tier compatível).
 - **Armazenamento:** 8 GB SSD.
 - **Subnet:** Privada.
-- **Elastic IP:** Associado manualmente para IP fixo.
 - **IAM:** Política de acesso para as credenciais armazenadas no Secrets Manager.
 - **User Data:** Script de inicialização que instala Docker, configura EFS, busca credenciais e sobe WordPress.
 
@@ -264,7 +263,7 @@ Durante a implementação do projeto, algumas dificuldades técnicas foram ident
 
 -   **Problema:** A instância EC2 não conseguia resolver o DNS do Amazon EFS.
 -   **Causa:** A opção “Nomes de host DNS” estava desabilitada na VPC, impedindo a resolução de nomes internos.
--   **Solução:** Foi habilitado a "Resolução de DNS" e "Nomes de host DNS" nas configurações da VPC. Após isso, o EFS pôde ser montado corretamente.
+-   **Solução:** A solução foi habilitar a "Resolução de DNS" e "Nomes de host DNS" nas configurações da VPC. Após isso, o EFS pôde ser montado corretamente.
 
 ### 2. 🐢 Timeout/erro na conexão com o banco RDS
 
@@ -288,7 +287,7 @@ Durante a implementação do projeto, algumas dificuldades técnicas foram ident
 
 ## 🧪 Exemplo de Funcionamento:
 
-### 🖥️ Página Do WordPress Ativa (Deploy Realizado com Sucesso)
+### 🖥️ Página do WordPress Ativa (Deploy Realizado com Sucesso)
 
 ![Página no ar](./img/WordPressFuncionando.png)
 
