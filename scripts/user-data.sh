@@ -4,7 +4,6 @@
 
 # Atualiza pacotes e sistema
 apt update -y
-apt upgrade -y
 apt install -y curl gnupg lsb-release software-properties-common unzip jq nfs-common
 
 # Instala AWS CLI via curl
